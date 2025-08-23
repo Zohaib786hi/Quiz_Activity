@@ -1,0 +1,4 @@
+right click anywhere in this folder, and hit run powershell, and run this command:
+npm run dev
+
+Navigate to http://localhost:5173/ to test

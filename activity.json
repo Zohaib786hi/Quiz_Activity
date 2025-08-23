@@ -1,0 +1,22 @@
+{
+  "name": "Age of Empires III Quiz",
+  "type": "EMBEDDED_APP",
+  "embedded_app_config": {
+    "iframe_url": "https://your-cloudflare-tunnel-url.trycloudflare.com",
+    "redirect_url": "https://your-cloudflare-tunnel-url.trycloudflare.com",
+    "permissions": [
+      "ACTIVITY_JOIN",
+      "ACTIVITY_SPEAK",
+      "ACTIVITY_USE_VOICE_ACTIVITY"
+    ]
+  },
+  "install_params": {
+    "scopes": [
+      "identify",
+      "guilds.join"
+    ]
+  },
+  "flags": 0,
+  "tags": ["game", "trivia", "multiplayer"],
+  "description": "Test your Age of Empires III knowledge in this multiplayer trivia game! Compete with friends in real-time and see who knows the most about this classic RTS game."
+}
