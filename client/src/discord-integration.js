@@ -1,5 +1,3 @@
-import { getSdk } from '@discord/embedded-app-sdk';
-
 class DiscordIntegration {
   constructor() {
     this.sdk = null;
@@ -15,6 +13,8 @@ class DiscordIntegration {
 
   async initialize() {
     try {
+      // Dynamically import Discord SDK
+      const { getSdk } = await import('@discord/embedded-app-sdk');
       this.sdk = await getSdk();
       this.isInitialized = true;
       
