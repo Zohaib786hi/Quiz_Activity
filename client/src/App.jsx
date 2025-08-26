@@ -144,12 +144,25 @@ export default function App() {
   useEffect(() => {
     const initializeGame = async () => {
       try {
+        // Check if we're in Discord's embedded app environment
+        const isDiscordEmbedded = window.location.href.includes('discord.com') || 
+                                 window.parent !== window ||
+                                 window.location.search.includes('discord');
+        
+        console.log('Environment check:', {
+          isDiscordEmbedded,
+          url: window.location.href,
+          parent: window.parent !== window
+        });
+        
         // Try to initialize Discord integration
         const discordInitialized = await discordIntegration.initialize();
         
         if (discordInitialized) {
+          console.log('Discord integration successful, switching to multiplayer mode');
           setIsMultiplayerMode(true);
           const user = await discordIntegration.getCurrentUser();
+          console.log('Current Discord user:', user);
           setCurrentUser(user);
           
           // Initialize multiplayer service
@@ -220,7 +233,9 @@ export default function App() {
             setIsHost(roomState.players.length === 1);
             
           } else {
-            console.warn('Failed to initialize multiplayer, falling back to local mode');
+            console.warn('Failed to initialize multiplayer, but Discord user is available');
+            // Even if multiplayer fails, we can show the Discord user
+            setPlayers([user]); // Show the Discord user in the list
             setIsMultiplayerMode(false);
           }
         } else {

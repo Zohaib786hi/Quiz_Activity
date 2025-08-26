@@ -13,8 +13,26 @@ class DiscordIntegration {
 
   async initialize() {
     try {
-      // Dynamically import Discord SDK
-      const { getSdk } = await import('@discord/embedded-app-sdk');
+      // Check if we're in Discord environment
+      if (typeof window !== 'undefined' && window.location.href.includes('discord.com')) {
+        console.log('Detected Discord environment, attempting to initialize SDK...');
+      }
+      
+      // Try multiple import methods
+      let getSdk;
+      try {
+        const sdkModule = await import('@discord/embedded-app-sdk');
+        getSdk = sdkModule.getSdk;
+      } catch (importError) {
+        console.error('Failed to import Discord SDK:', importError);
+        return false;
+      }
+      
+      if (!getSdk) {
+        console.error('getSdk function not found in Discord SDK');
+        return false;
+      }
+      
       this.sdk = await getSdk();
       this.isInitialized = true;
       
