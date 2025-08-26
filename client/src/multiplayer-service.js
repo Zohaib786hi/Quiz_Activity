@@ -52,7 +52,7 @@ class MultiplayerService {
       // Get Discord token for authentication
       const token = await this.getDiscordToken();
       
-      this.socket = io('https://your-cloudflare-tunnel-url.trycloudflare.com', {
+      this.socket = io('https://quiz-activity.onrender.com', {
         auth: {
           token: token,
           roomId: this.roomId

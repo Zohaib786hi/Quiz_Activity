@@ -86,7 +86,7 @@ app.post("/api/token", async (req, res) => {
     client_secret: CLIENT_SECRET,
     grant_type: "authorization_code",
     code,
-    redirect_uri: "https://your-cloudflare-tunnel-url.trycloudflare.com",  // Update this with your actual tunnel URL
+    redirect_uri: "https://quiz-activity.onrender.com",  // Render deployment URL
   });
 
   try {
@@ -364,13 +364,31 @@ io.on("connection", (socket) => {
   });
 });
 
+// Serve static files from the React app build directory
 const frontendPath = path.join(__dirname, "../client/dist");
-app.use(express.static(frontendPath));
 
-// Catch-all: send back index.html for any unknown route
-app.get("*", (req, res) => {
-  res.sendFile(path.join(frontendPath, "index.html"));
-});
+// Check if the client build exists
+const fs = require('fs');
+if (fs.existsSync(frontendPath)) {
+  app.use(express.static(frontendPath));
+  
+  // Catch-all: send back index.html for any unknown route
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(frontendPath, "index.html"));
+  });
+} else {
+  console.warn("Client build not found at:", frontendPath);
+  console.warn("Make sure to run 'npm run build' to build the client");
+  
+  // Fallback route for when client is not built
+  app.get("*", (req, res) => {
+    res.json({ 
+      error: "Client not built", 
+      message: "Please run 'npm run build' to build the React client",
+      path: frontendPath 
+    });
+  });
+}
 
 server.listen(PORT, () => {
   console.log("Server listening on", PORT);

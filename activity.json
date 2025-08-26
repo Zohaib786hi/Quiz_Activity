@@ -2,8 +2,8 @@
   "name": "Age of Empires III Quiz",
   "type": "EMBEDDED_APP",
   "embedded_app_config": {
-    "iframe_url": "https://your-cloudflare-tunnel-url.trycloudflare.com",
-    "redirect_url": "https://your-cloudflare-tunnel-url.trycloudflare.com",
+    "iframe_url": "https://quiz-activity.onrender.com",
+    "redirect_url": "https://quiz-activity.onrender.com",
     "permissions": [
       "ACTIVITY_JOIN",
       "ACTIVITY_SPEAK",
