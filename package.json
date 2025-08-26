@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server/server.js",
     "dev": "nodemon server/server.js",
-    "build": "cd client && npm install && npm run build"
+    "build": "cd client && npm install && npm run build",
+    "postinstall": "npm run build",
+    "render-build": "npm install && cd client && npm install && npm run build"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
