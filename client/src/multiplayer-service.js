@@ -84,13 +84,46 @@ class MultiplayerService {
 
   async getDiscordToken() {
     try {
-      // This would typically come from Discord's OAuth flow
-      // For now, we'll use a placeholder - in production this should be properly implemented
       const sdk = discordIntegration.sdk;
-      if (sdk && sdk.commands.getAccessToken) {
-        return await sdk.commands.getAccessToken();
+      if (!sdk) {
+        throw new Error('Discord SDK not available');
       }
-      throw new Error('No access token available');
+      
+      // Try multiple methods to get access token
+      let token;
+      
+      // Method 1: Direct SDK command
+      if (sdk.commands && sdk.commands.getAccessToken) {
+        try {
+          token = await sdk.commands.getAccessToken();
+          if (token) return token;
+        } catch (error) {
+          console.warn('getAccessToken failed:', error);
+        }
+      }
+      
+      // Method 2: Check if token is available in SDK state
+      if (sdk.state && sdk.state.accessToken) {
+        token = sdk.state.accessToken;
+        if (token) return token;
+      }
+      
+      // Method 3: Check for token in URL parameters
+      const urlParams = new URLSearchParams(window.location.search);
+      token = urlParams.get('access_token') || urlParams.get('token');
+      if (token) return token;
+      
+      // Method 4: Check localStorage/sessionStorage
+      token = localStorage.getItem('discord_access_token') || sessionStorage.getItem('discord_access_token');
+      if (token) return token;
+      
+      // Method 5: Generate a temporary token for development
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Development mode: using temporary token');
+        return 'dev-token-' + Date.now();
+      }
+      
+      throw new Error('No access token available from any source');
     } catch (error) {
       console.error('Failed to get Discord token:', error);
       throw error;

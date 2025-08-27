@@ -1,0 +1,5 @@
+[33mcf1ec2e[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Fix Discord SDK integration: Add better error handling, debugging, and fallback logic
+[33me832d41[m Fix Discord SDK import: Use dynamic import to avoid build errors
+[33me077a52[m Fix build process: Add explicit build script and update render configuration
+[33m96fb237[m Fix build issue: Move vite to dependencies for production build
+[33m1eba659[m Fix Render deployment: Add build scripts, consolidate dependencies, update URLs for Render

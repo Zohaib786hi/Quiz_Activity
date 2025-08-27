@@ -12,8 +12,7 @@
   },
   "install_params": {
     "scopes": [
-      "identify",
-      "guilds.join"
+      "identify"
     ]
   },
   "flags": 0,

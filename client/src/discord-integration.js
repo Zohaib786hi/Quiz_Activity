@@ -13,6 +13,10 @@ class DiscordIntegration {
 
   async initialize() {
     try {
+      console.log('Starting Discord SDK initialization...');
+      console.log('Window location:', window.location.href);
+      console.log('Window parent:', window.parent !== window);
+      
       // Check if we're in Discord environment
       if (typeof window !== 'undefined' && window.location.href.includes('discord.com')) {
         console.log('Detected Discord environment, attempting to initialize SDK...');
@@ -21,11 +25,22 @@ class DiscordIntegration {
       // Try multiple import methods
       let getSdk;
       try {
+        console.log('Attempting dynamic import of Discord SDK...');
         const sdkModule = await import('@discord/embedded-app-sdk');
+        console.log('SDK module imported:', sdkModule);
         getSdk = sdkModule.getSdk;
+        console.log('getSdk function found:', typeof getSdk);
       } catch (importError) {
-        console.error('Failed to import Discord SDK:', importError);
-        return false;
+        console.error('Dynamic import failed:', importError);
+        
+        // Try alternative methods
+        if (window.DiscordSDK && window.DiscordSDK.getSdk) {
+          console.log('Using global DiscordSDK');
+          getSdk = window.DiscordSDK.getSdk;
+        } else {
+          console.error('No alternative SDK source found');
+          return false;
+        }
       }
       
       if (!getSdk) {
@@ -33,10 +48,19 @@ class DiscordIntegration {
         return false;
       }
       
+      console.log('Calling getSdk()...');
       this.sdk = await getSdk();
+      console.log('SDK obtained:', this.sdk);
+      
+      if (!this.sdk) {
+        console.error('SDK initialization returned null/undefined');
+        return false;
+      }
+      
       this.isInitialized = true;
       
       // Set up event listeners
+      console.log('Setting up SDK event listeners...');
       this.sdk.subscribe('ACTIVITY_INSTANCE_PARTICIPANTS_UPDATE', (data) => {
         console.log('Participants update:', data);
         if (this.onPlayerJoin) this.onPlayerJoin(data);
@@ -45,12 +69,14 @@ class DiscordIntegration {
       this.sdk.subscribe('ACTIVITY_INSTANCE_UPDATE', (data) => {
         console.log('Activity update:', data);
         this.activityId = data.activity_id;
-        this.roomId = data.activity_id; // Use activity ID as room ID
+        this.roomId = data.activity_id || 'default-room'; // Fallback room ID
         if (this.onActivityUpdate) this.onActivityUpdate(data);
       });
 
       // Get current user
+      console.log('Getting current user...');
       const user = await this.sdk.commands.getCurrentUser();
+      console.log('Current user obtained:', user);
       this.currentUser = user;
       if (this.onUserUpdate) this.onUserUpdate(user);
 
@@ -58,6 +84,7 @@ class DiscordIntegration {
       return true;
     } catch (error) {
       console.error('Failed to initialize Discord SDK:', error);
+      console.error('Error stack:', error.stack);
       return false;
     }
   }

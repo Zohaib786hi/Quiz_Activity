@@ -10,12 +10,13 @@ const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 3001;
-const CLIENT_ID = process.env.VITE_DISCORD_CLIENT_ID;
+const CLIENT_ID = process.env.DISCORD_CLIENT_ID || process.env.VITE_DISCORD_CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const MAX_TIME = 15;
 
 if (!CLIENT_ID || !CLIENT_SECRET) {
-  console.error("Missing VITE_DISCORD_CLIENT_ID or CLIENT_SECRET env vars");
+  console.error("Missing DISCORD_CLIENT_ID or CLIENT_SECRET env vars");
+  console.error("Please set DISCORD_CLIENT_ID and CLIENT_SECRET environment variables");
   process.exit(1);
 }
 
@@ -153,16 +154,44 @@ const rooms = {}; // roomId -> { players: {userId: {id,name,score}}, currentQues
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth?.token;
-    if (!token) return next(new Error("Missing token"));
+    const roomId = socket.handshake.auth?.roomId;
+    
+    // Allow development tokens
+    if (token && token.startsWith('dev-token-')) {
+      socket.data.user = {
+        id: `dev-user-${Date.now()}`,
+        username: `Developer_${Math.random().toString(36).substr(2, 6)}`
+      };
+      socket.data.roomId = roomId || 'dev-room';
+      return next();
+    }
+    
+    if (!token) {
+      console.log('No token provided, rejecting connection');
+      return next(new Error("Missing token"));
+    }
+    
     // validate token with Discord
-    const resp = await fetch("https://discord.com/api/users/@me", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!resp.ok) return next(new Error("Invalid Discord token"));
-    const user = await resp.json();
-    socket.data.user = user;
-    return next();
+    try {
+      const resp = await fetch("https://discord.com/api/users/@me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (!resp.ok) {
+        console.log('Invalid Discord token, rejecting connection');
+        return next(new Error("Invalid Discord token"));
+      }
+      
+      const user = await resp.json();
+      socket.data.user = user;
+      socket.data.roomId = roomId || 'default-room';
+      return next();
+    } catch (discordError) {
+      console.error('Discord API error:', discordError);
+      return next(new Error("Discord API error"));
+    }
   } catch (err) {
+    console.error('Socket authentication error:', err);
     return next(new Error("Auth error"));
   }
 });
@@ -204,10 +233,13 @@ function computeScores(room) {
 
 io.on("connection", (socket) => {
   const user = socket.data.user;
-  const roomId = socket.handshake.auth.roomId || "default-room";
+  const roomId = socket.data.roomId || "default-room";
+
+  console.log(`User ${user.username} (${user.id}) connecting to room ${roomId}`);
 
   // ensure room exists
   if (!rooms[roomId]) {
+    console.log(`Creating new room: ${roomId}`);
     rooms[roomId] = { 
       players: {}, 
       selections: {}, 
@@ -231,6 +263,7 @@ io.on("connection", (socket) => {
   rooms[roomId].scores = Object.fromEntries(Object.entries(rooms[roomId].players).map(([id, p]) => [id, p.score || 0]));
 
   socket.join(roomId);
+  console.log(`User ${user.username} joined room ${roomId}`);
 
   // notify this socket of their id
   socket.emit("you_joined", { playerId: user.id });
