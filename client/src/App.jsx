@@ -1,7 +1,5 @@
 // (entire file — only small changes around the leaderboard rendering and the <style> block)
 import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from "react";
-import questions from "./questions.json";
-import hcCards from "./hc_cards.json";
 import discordIntegration from "./discord-integration.js";
 import multiplayerService from "./multiplayer-service.js";
 
@@ -39,15 +37,6 @@ import revealSoundFile from "./assets/chatreceived.wav";
 
 const MAX_TIME = 15;
 
-// Expanded to 5 placeholder players for visual testing
-const playersList = [
-  { id: "player1", name: "You" },
-  { id: "player2", name: "Mate" },
-  { id: "player3", name: "Ally" },
-  { id: "player4", name: "Alex" },
-  { id: "player5", name: "Casey" },
-];
-
 // Volume/fade settings
 const NORMAL_VOLUME = 0.6; // volume when question is active
 const FADED_VOLUME = 0.08; // volume when question ended (faded down)
@@ -71,15 +60,15 @@ const formatNumber = (n) => {
 };
 
 export default function App() {
-  // Multiplayer state
-  const [isMultiplayerMode, setIsMultiplayerMode] = useState(false);
+  // Discord and multiplayer state
   const [currentUser, setCurrentUser] = useState(null);
   const [players, setPlayers] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isHost, setIsHost] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   // Game state
-  const [availableQuestions, setAvailableQuestions] = useState([...questions]);
   const [currentQuestion, setCurrentQuestion] = useState(null);
   const [selections, setSelections] = useState({});
   const [timeLeft, setTimeLeft] = useState(MAX_TIME);
@@ -194,6 +183,11 @@ export default function App() {
   useEffect(() => {
     const initializeGame = async () => {
       try {
+        setIsLoading(true);
+        setError(null);
+        
+        console.log('Initializing Discord-only multiplayer game...');
+        
         // Enhanced Discord environment detection
         const isDiscordEmbedded = 
           window.location.href.includes('discord.com') || 
@@ -215,119 +209,114 @@ export default function App() {
           userAgent: navigator.userAgent
         });
         
-        // Always try to initialize Discord integration in Discord environment
-        if (isDiscordEmbedded) {
-          console.log('Discord environment detected, attempting Discord integration...');
-          const discordInitialized = await discordIntegration.initialize();
-          
-          if (discordInitialized) {
-            console.log('Discord integration successful, switching to multiplayer mode');
-            setIsMultiplayerMode(true);
-            const user = await discordIntegration.getCurrentUser();
-            console.log('Current Discord user:', user);
-            setCurrentUser(user);
-            
-            // Initialize multiplayer service
-            const multiplayerInitialized = await multiplayerService.initialize();
-            if (multiplayerInitialized) {
-              setIsConnected(true);
-              
-              // Set up multiplayer event handlers
-              multiplayerService.onConnect = () => {
-                setIsConnected(true);
-                console.log('Connected to multiplayer server');
-              };
-              
-              multiplayerService.onDisconnect = () => {
-                setIsConnected(false);
-                console.log('Disconnected from multiplayer server');
-              };
-              
-              multiplayerService.onRoomStateUpdate = (data) => {
-                setPlayers(data.players || []);
-                setScores(data.scores || {});
-                
-                // Update Discord activity
-                const activity = discordIntegration.formatActivityForDiscord({
-                  currentQuestion,
-                  scores: data.scores,
-                  players: data.players,
-                  timeLeft
-                });
-                discordIntegration.setActivity(activity);
-              };
-              
-              multiplayerService.onQuestionStart = (data) => {
-                setCurrentQuestion(data.question);
-                setSelections({});
-                setShowResult(false);
-                setTimeLeft(data.maxTime || MAX_TIME);
-                setCardInput("");
-                setCardLastWrong(false);
-                setCardImageError(false); // Reset image error state
-                setCardImageLoaded(false); // Reset image loaded state
-                awardedDoneRef.current = false;
-                answerTimesRef.current = {};
-                
-                // Preload card image if it's a card question
-                if (data.question.cardUrl) {
-                  preloadCardImage(data.question.cardUrl).catch(err => {
-                    console.warn('Failed to preload card image:', err);
-                  });
-                }
-                
-                // Update Discord activity
-                const activity = discordIntegration.formatActivityForDiscord({
-                  currentQuestion: data.question,
-                  scores,
-                  players,
-                  timeLeft: data.maxTime || MAX_TIME
-                });
-                discordIntegration.setActivity(activity);
-              };
-              
-              multiplayerService.onShowResult = (data) => {
-                setShowResult(true);
-                setScores(data.scores || {});
-                
-                // Update Discord activity
-                const activity = discordIntegration.formatActivityForDiscord({
-                  currentQuestion: null,
-                  scores: data.scores,
-                  players
-                });
-                discordIntegration.setActivity(activity);
-              };
-              
-              // Check if this user is the host (first to join)
-              const roomState = multiplayerService.getCurrentState();
-              setIsHost(roomState.players.length === 1);
-              
-            } else {
-              console.warn('Failed to initialize multiplayer, but Discord user is available');
-              // Even if multiplayer fails, we can show the Discord user
-              setPlayers([user]); // Show the Discord user in the list
-              setIsMultiplayerMode(false);
-              // Start local game as fallback
-              pickAndSetRandomQuestion();
-            }
-          } else {
-            console.log('Discord integration failed, running in local mode');
-            setIsMultiplayerMode(false);
-            // Initialize local game
-            pickAndSetRandomQuestion();
-          }
-        } else {
-          console.log('Not in Discord environment, running in local mode');
-          setIsMultiplayerMode(false);
-          // Initialize local game
-          pickAndSetRandomQuestion();
+        if (!isDiscordEmbedded) {
+          setError('This game must be played within Discord. Please open it as a Discord Activity.');
+          setIsLoading(false);
+          return;
         }
+        
+        // Initialize Discord integration
+        console.log('Discord environment detected, initializing Discord integration...');
+        const discordInitialized = await discordIntegration.initialize();
+        
+        if (!discordInitialized) {
+          setError('Failed to connect to Discord. Please refresh and try again.');
+          setIsLoading(false);
+          return;
+        }
+        
+        console.log('Discord integration successful');
+        const user = await discordIntegration.getCurrentUser();
+        console.log('Current Discord user:', user);
+        setCurrentUser(user);
+        
+        // Initialize multiplayer service
+        const multiplayerInitialized = await multiplayerService.initialize();
+        if (!multiplayerInitialized) {
+          setError('Failed to connect to game server. Please check your connection and try again.');
+          setIsLoading(false);
+          return;
+        }
+        
+        setIsConnected(true);
+        
+        // Set up multiplayer event handlers
+        multiplayerService.onConnect = () => {
+          setIsConnected(true);
+          console.log('Connected to multiplayer server');
+        };
+        
+        multiplayerService.onDisconnect = () => {
+          setIsConnected(false);
+          console.log('Disconnected from multiplayer server');
+        };
+        
+        multiplayerService.onRoomStateUpdate = (data) => {
+          setPlayers(data.players || []);
+          setScores(data.scores || {});
+          
+          // Update Discord activity
+          const activity = discordIntegration.formatActivityForDiscord({
+            currentQuestion,
+            scores: data.scores,
+            players: data.players,
+            timeLeft
+          });
+          discordIntegration.setActivity(activity);
+        };
+        
+        multiplayerService.onQuestionStart = (data) => {
+          setCurrentQuestion(data.question);
+          setSelections({});
+          setShowResult(false);
+          setTimeLeft(data.maxTime || MAX_TIME);
+          setCardInput("");
+          setCardLastWrong(false);
+          setCardImageError(false);
+          setCardImageLoaded(false);
+          awardedDoneRef.current = false;
+          answerTimesRef.current = {};
+          
+          // Preload card image if it's a card question
+          if (data.question.cardUrl) {
+            preloadCardImage(data.question.cardUrl).catch(err => {
+              console.warn('Failed to preload card image:', err);
+            });
+          }
+          
+          // Update Discord activity
+          const activity = discordIntegration.formatActivityForDiscord({
+            currentQuestion: data.question,
+            scores,
+            players,
+            timeLeft: data.maxTime || MAX_TIME
+          });
+          discordIntegration.setActivity(activity);
+        };
+        
+        multiplayerService.onShowResult = (data) => {
+          setShowResult(true);
+          setScores(data.scores || {});
+          
+          // Update Discord activity
+          const activity = discordIntegration.formatActivityForDiscord({
+            currentQuestion: null,
+            scores: data.scores,
+            players
+          });
+          discordIntegration.setActivity(activity);
+        };
+        
+        // Check if this user is the host (first to join)
+        const roomState = multiplayerService.getCurrentState();
+        setIsHost(roomState.players.length === 1);
+        
+        setIsLoading(false);
+        
       } catch (error) {
         console.error('Failed to initialize game:', error);
-        setIsMultiplayerMode(false);
-        // Initialize local game as fallback
-        pickAndSetRandomQuestion();
+        setError('Failed to initialize game. Please refresh and try again.');
+        setIsLoading(false);
       }
     };
 
@@ -335,10 +324,8 @@ export default function App() {
 
     // Cleanup on unmount
     return () => {
-      if (isMultiplayerMode) {
-        multiplayerService.disconnect();
-        discordIntegration.clearActivity();
-      }
+      multiplayerService.disconnect();
+      discordIntegration.clearActivity();
     };
   }, []);
 
@@ -629,61 +616,11 @@ export default function App() {
     hoverSound.current.play().catch(() => {});
   };
 
-  const pickAndSetRandomQuestion = () => {
-    // Only for local mode - multiplayer mode uses server questions
-    if (isMultiplayerMode) return;
-
-    // 30% chance to pick a HC card "guess the card" style question
-    const pickCard = Math.random() < 0.3 && Object.keys(hcCards).length > 0;
-
-    if (pickCard) {
-      const keys = Object.keys(hcCards);
-      const idx = Math.floor(Math.random() * keys.length);
-      const name = keys[idx];
-      const url = hcCards[name];
-
-      setCurrentQuestion({ isCard: true, cardName: name, cardUrl: url });
-      setSelections({});
-      setShowResult(false);
-      setTimeLeft(MAX_TIME);
-      setCardInput("");
-      setCardLastWrong(false);
-      setCardImageError(false); // Reset image error state
-
-      // reset per-question tracking
-      answerTimesRef.current = {};
-      awardedDoneRef.current = false;
-      return;
-    }
-
-    // Otherwise pick trivia as before
-    if (availableQuestions.length === 0) {
-      setCurrentQuestion(null);
-      return;
-    }
-    const index = Math.floor(Math.random() * availableQuestions.length);
-    const q = availableQuestions[index];
-    setAvailableQuestions((prev) => prev.filter((_, i) => i !== index));
-    setCurrentQuestion(q);
-    setSelections({});
-    setShowResult(false);
-    setTimeLeft(MAX_TIME);
-
-    // reset per-question tracking
-    answerTimesRef.current = {};
-    awardedDoneRef.current = false;
-  };
-
   const startMultiplayerGame = () => {
-    if (isMultiplayerMode && isHost) {
+    if (isHost) {
       multiplayerService.startGame();
     }
   };
-
-  useEffect(() => {
-    pickAndSetRandomQuestion();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     if (!currentQuestion) return;
@@ -706,7 +643,7 @@ export default function App() {
     return () => clearInterval(timerRef.current);
   }, [currentQuestion, showResult]);
 
-  const myPlayerId = "player1";
+  const myPlayerId = currentUser?.id || "player1";
 
   const isCardMode = currentQuestion ? !!currentQuestion.isCard : false;
 
@@ -720,30 +657,8 @@ export default function App() {
     if (showResult) return;
     if (selections[playerId] !== undefined) return;
 
-    if (isMultiplayerMode) {
-      // Send selection to server
-      multiplayerService.selectOption(optionIndex);
-    } else {
-      // Local mode logic
-      const clickedTimeLeft = timeLeft;
-
-      setSelections((prev) => {
-        const newSelections = { ...prev, [playerId]: optionIndex };
-
-        answerTimesRef.current = {
-          ...answerTimesRef.current,
-          [playerId]: clickedTimeLeft,
-        };
-
-        // If everybody has now answered, stop the timer and reveal results
-        if (Object.keys(newSelections).length === playersList.length) {
-          clearInterval(timerRef.current);
-          setShowResult(true);
-        }
-
-        return newSelections;
-      });
-    }
+    // Send selection to server
+    multiplayerService.selectOption(optionIndex);
 
     // unlock audio context & maybe start music because this was a user gesture
     if (musicEnabled) startBackgroundMusic();
@@ -785,7 +700,7 @@ export default function App() {
 
       // If every player has now answered (unlikely for multi players in card-mode), reveal
       const answeredCount = Object.keys({ ...selections, [playerId]: true }).length;
-      if (answeredCount === playersList.length) {
+      if (answeredCount === players.length) {
         clearInterval(timerRef.current);
         setShowResult(true);
       }
@@ -815,7 +730,7 @@ export default function App() {
 
       if (isCardMode) {
         // award points to any player who answered correctly (selections[playerId] === true)
-        playersList.forEach(({ id }) => {
+        players.forEach(({ id }) => {
           if (selections[id] === true) {
             const timeAtAnswer = answerTimesRef.current[id];
             const points = timeAtAnswer ? computePointsFromTime(timeAtAnswer) : 0;
@@ -824,7 +739,7 @@ export default function App() {
         });
       } else {
         // trivia mode (existing logic)
-        playersList.forEach(({ id }) => {
+        players.forEach(({ id }) => {
           // only award if the player's selection was correct
           if (selections[id] === correctIndex) {
             const timeAtAnswer = answerTimesRef.current[id];
@@ -843,13 +758,9 @@ export default function App() {
   }, [showResult]);
 
   const onNextQuestion = () => {
-    if (isMultiplayerMode) {
-      // In multiplayer, the server handles next questions
-      if (isHost) {
-        multiplayerService.startGame();
-      }
-    } else {
-      pickAndSetRandomQuestion();
+    // In multiplayer, the server handles next questions
+    if (isHost) {
+      multiplayerService.startGame();
     }
   };
 
@@ -857,29 +768,18 @@ export default function App() {
 
   // Build a sorted leaderboard from scores
   const sortedPlayers = useMemo(() => {
-    if (isMultiplayerMode) {
-      // Use actual players from multiplayer
-      return players
-        .map((p) => ({
-          id: p.id,
-          name: p.name,
-          score: scores[p.id] || 0,
-          isCurrentUser: currentUser && p.id === currentUser.id
-        }))
-        .sort((a, b) => {
-          if (b.score !== a.score) return b.score - a.score;
-          return a.name.localeCompare(b.name);
-        });
-    } else {
-      // Local mode - use placeholder players
-      return playersList
-        .map((p) => ({ ...p, score: scores[p.id] || 0 }))
-        .sort((a, b) => {
-          if (b.score !== a.score) return b.score - a.score;
-          return a.name.localeCompare(b.name);
-        });
-    }
-  }, [scores, players, isMultiplayerMode, currentUser]);
+    return players
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        score: scores[p.id] || 0,
+        isCurrentUser: currentUser && p.id === currentUser.id
+      }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.name.localeCompare(b.name);
+      });
+  }, [scores, players, currentUser]);
 
   // helper to get medal asset for top-3 ranks
   const getMedalForRank = (rankIdx) => {
@@ -1025,16 +925,14 @@ export default function App() {
                 <li
                   key={p.id}
                   data-player-id={p.id}
-                  className={`leaderboard-item ${p.id === myPlayerId ? "you" : ""} rank-${idx + 1}`}
+                  className={`leaderboard-item ${p.id === currentUser?.id ? "you" : ""} rank-${idx + 1}`}
                   aria-label={`${p.name} score ${p.score}`}
                 >
-                  {/* NEW: inner wrapper so FLIP's translate transforms on <li> do not override scale */}
                   <div className="leaderboard-row">
                     {medal ? (
                       <img
                         src={medal}
                         alt={`#${idx + 1} medal`}
-                        // sizes controlled by CSS below to keep adjustments centralized
                       />
                     ) : (
                       <span className="leaderboard-rank">{idx + 1}</span>
@@ -1076,21 +974,138 @@ export default function App() {
             onMouseEnter={playHoverSound}
             onClick={() => {
               playClickSound();
-              setAvailableQuestions([...questions]);
-              setScores(
-                playersList.reduce((acc, p) => {
-                  acc[p.id] = 0;
-                  return acc;
-                }, {})
-              );
               // reset per-question tracking
               answerTimesRef.current = {};
               awardedDoneRef.current = false;
-              pickAndSetRandomQuestion();
+              // The server will handle the next question in multiplayer mode
             }}
           >
             Restart Quiz
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div
+        className="app-container"
+        style={{
+          backgroundImage: `url(${marbleBg})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+          height: "100vh",
+          width: "100vw",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 20,
+          boxSizing: "border-box",
+        }}
+      >
+        <div
+          className="wood-panel"
+          style={{
+            backgroundImage: `url(${woodPanelBg})`,
+            backgroundSize: "contain",
+            backgroundRepeat: "no-repeat",
+            backgroundPosition: "center",
+            padding: 60,
+            boxSizing: "border-box",
+            width: 850,
+            maxWidth: "95vw",
+            minHeight: 600,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+            color: "white",
+            textShadow: "0 1px 2px rgba(0,0,0,0.8)",
+          }}
+        >
+          <h1 className="title">Age of Empires III Trivia!</h1>
+          <div style={{ textAlign: "center", marginTop: 40 }}>
+            <div style={{ fontSize: "24px", marginBottom: 20 }}>
+              Connecting to Discord...
+            </div>
+            <div style={{ fontSize: "16px", opacity: 0.8 }}>
+              Please wait while we set up your multiplayer game.
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div
+        className="app-container"
+        style={{
+          backgroundImage: `url(${marbleBg})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+          height: "100vh",
+          width: "100vw",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 20,
+          boxSizing: "border-box",
+        }}
+      >
+        <div
+          className="wood-panel"
+          style={{
+            backgroundImage: `url(${woodPanelBg})`,
+            backgroundSize: "contain",
+            backgroundRepeat: "no-repeat",
+            backgroundPosition: "center",
+            padding: 60,
+            boxSizing: "border-box",
+            width: 850,
+            maxWidth: "95vw",
+            minHeight: 600,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+            color: "white",
+            textShadow: "0 1px 2px rgba(0,0,0,0.8)",
+          }}
+        >
+          <h1 className="title">Age of Empires III Trivia!</h1>
+          <div style={{ textAlign: "center", marginTop: 40 }}>
+            <div style={{ fontSize: "24px", marginBottom: 20, color: "#ff6b6b" }}>
+              Connection Error
+            </div>
+            <div style={{ fontSize: "16px", opacity: 0.8, marginBottom: 30 }}>
+              {error}
+            </div>
+            <button
+              style={{
+                background: "linear-gradient(135deg, #4CAF50, #45a049)",
+                border: "none",
+                borderRadius: 8,
+                color: "white",
+                padding: "12px 24px",
+                fontSize: "16px",
+                fontWeight: "bold",
+                cursor: "pointer",
+                boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
+              }}
+              onClick={() => window.location.reload()}
+            >
+              Try Again
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1115,8 +1130,7 @@ export default function App() {
         boxSizing: "border-box",
       }}
     >
-      {/* Multiplayer Status */}
-      {isMultiplayerMode && (
+              {/* Connection Status */}
         <div
           style={{
             position: "absolute",
@@ -1143,7 +1157,6 @@ export default function App() {
           {isConnected ? "Connected" : "Disconnected"}
           {isHost && " (Host)"}
         </div>
-      )}
 
       {/* Leaderboard sidebar */}
       <aside className="leaderboard-container" aria-label="Leaderboard">
@@ -1155,7 +1168,7 @@ export default function App() {
               <li
                 key={p.id}
                 data-player-id={p.id}
-                className={`leaderboard-item ${p.id === myPlayerId ? "you" : ""} rank-${idx + 1}`}
+                                 className={`leaderboard-item ${p.id === currentUser?.id ? "you" : ""} rank-${idx + 1}`}
                 aria-label={`${p.name} score ${p.score}`}
               >
                 {/* NEW: inner wrapper so FLIP's translate transforms on <li> do not override scale */}
@@ -1227,26 +1240,26 @@ export default function App() {
           textShadow: "0 1px 2px rgba(0,0,0,0.8)",
         }}
       >
-        <h1 className="title">Age of Empires III Trivia!</h1>
-        {isMultiplayerMode && !currentQuestion && isHost && (
-          <button
-            style={{
-              background: "linear-gradient(135deg, #4CAF50, #45a049)",
-              border: "none",
-              borderRadius: 8,
-              color: "white",
-              padding: "12px 24px",
-              fontSize: "16px",
-              fontWeight: "bold",
-              cursor: "pointer",
-              marginTop: 20,
-              boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
-            }}
-            onClick={startMultiplayerGame}
-          >
-            Start Game
-          </button>
-        )}
+                  <h1 className="title">Age of Empires III Trivia!</h1>
+          {!currentQuestion && isHost && (
+            <button
+              style={{
+                background: "linear-gradient(135deg, #4CAF50, #45a049)",
+                border: "none",
+                borderRadius: 8,
+                color: "white",
+                padding: "12px 24px",
+                fontSize: "16px",
+                fontWeight: "bold",
+                cursor: "pointer",
+                marginTop: 20,
+                boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
+              }}
+              onClick={startMultiplayerGame}
+            >
+              Start Game
+            </button>
+          )}
         <img
           src={dividingLine}
           alt=""
@@ -1474,7 +1487,7 @@ export default function App() {
                     <span className="option-text">{opt}</span>
                     {reveal && (
                       <span className="option-badge">
-                        {playersList
+                        {players
                           .filter((p) => selections[p.id] === i)
                           .map((p) => p.name)
                           .join(", ")}
