@@ -90,6 +90,55 @@ export default function App() {
   const [cardInput, setCardInput] = useState("");
   const [cardLastWrong, setCardLastWrong] = useState(false);
   const [cardImageError, setCardImageError] = useState(false);
+  const [cardImageLoaded, setCardImageLoaded] = useState(false);
+
+  // Helper function to preload card images for better Discord iframe compatibility
+  const preloadCardImage = (imageUrl) => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous'; // Try to handle CORS issues
+      
+      img.onload = () => {
+        console.log('Card image loaded successfully:', imageUrl);
+        setCardImageLoaded(true);
+        setCardImageError(false);
+        resolve(img);
+      };
+      
+      img.onerror = () => {
+        console.warn('Card image failed to load:', imageUrl);
+        setCardImageLoaded(false);
+        setCardImageError(true);
+        reject(new Error('Image load failed'));
+      };
+      
+      // Set a timeout for image loading
+      const timeout = setTimeout(() => {
+        console.warn('Card image load timeout:', imageUrl);
+        setCardImageLoaded(false);
+        setCardImageError(true);
+        reject(new Error('Image load timeout'));
+      }, 10000); // 10 second timeout
+      
+      img.onload = () => {
+        clearTimeout(timeout);
+        console.log('Card image loaded successfully:', imageUrl);
+        setCardImageLoaded(true);
+        setCardImageError(false);
+        resolve(img);
+      };
+      
+      img.onerror = () => {
+        clearTimeout(timeout);
+        console.warn('Card image failed to load:', imageUrl);
+        setCardImageLoaded(false);
+        setCardImageError(true);
+        reject(new Error('Image load failed'));
+      };
+      
+      img.src = imageUrl;
+    });
+  };
 
   // Animated display scores (counts up when underlying `scores` changes)
   const [displayScores, setDisplayScores] = useState({});
@@ -145,102 +194,131 @@ export default function App() {
   useEffect(() => {
     const initializeGame = async () => {
       try {
-        // Check if we're in Discord's embedded app environment
-        const isDiscordEmbedded = window.location.href.includes('discord.com') || 
-                                 window.parent !== window ||
-                                 window.location.search.includes('discord');
+        // Enhanced Discord environment detection
+        const isDiscordEmbedded = 
+          window.location.href.includes('discord.com') || 
+          window.location.href.includes('discordapp.com') ||
+          window.parent !== window ||
+          document.referrer.includes('discord.com') ||
+          document.referrer.includes('discordapp.com') ||
+          window.location.search.includes('discord') ||
+          window.location.hash.includes('discord') ||
+          (window.navigator && window.navigator.userAgent && 
+           window.navigator.userAgent.toLowerCase().includes('discord')) ||
+          (window.self !== window.top);
         
         console.log('Environment check:', {
           isDiscordEmbedded,
           url: window.location.href,
-          parent: window.parent !== window
+          parent: window.parent !== window,
+          referrer: document.referrer,
+          userAgent: navigator.userAgent
         });
         
-        // Try to initialize Discord integration
-        const discordInitialized = await discordIntegration.initialize();
-        
-        if (discordInitialized) {
-          console.log('Discord integration successful, switching to multiplayer mode');
-          setIsMultiplayerMode(true);
-          const user = await discordIntegration.getCurrentUser();
-          console.log('Current Discord user:', user);
-          setCurrentUser(user);
+        // Always try to initialize Discord integration in Discord environment
+        if (isDiscordEmbedded) {
+          console.log('Discord environment detected, attempting Discord integration...');
+          const discordInitialized = await discordIntegration.initialize();
           
-          // Initialize multiplayer service
-          const multiplayerInitialized = await multiplayerService.initialize();
-          if (multiplayerInitialized) {
-            setIsConnected(true);
+          if (discordInitialized) {
+            console.log('Discord integration successful, switching to multiplayer mode');
+            setIsMultiplayerMode(true);
+            const user = await discordIntegration.getCurrentUser();
+            console.log('Current Discord user:', user);
+            setCurrentUser(user);
             
-            // Set up multiplayer event handlers
-            multiplayerService.onConnect = () => {
+            // Initialize multiplayer service
+            const multiplayerInitialized = await multiplayerService.initialize();
+            if (multiplayerInitialized) {
               setIsConnected(true);
-              console.log('Connected to multiplayer server');
-            };
-            
-            multiplayerService.onDisconnect = () => {
-              setIsConnected(false);
-              console.log('Disconnected from multiplayer server');
-            };
-            
-            multiplayerService.onRoomStateUpdate = (data) => {
-              setPlayers(data.players || []);
-              setScores(data.scores || {});
               
-              // Update Discord activity
-              const activity = discordIntegration.formatActivityForDiscord({
-                currentQuestion,
-                scores: data.scores,
-                players: data.players,
-                timeLeft
-              });
-              discordIntegration.setActivity(activity);
-            };
-            
-            multiplayerService.onQuestionStart = (data) => {
-              setCurrentQuestion(data.question);
-              setSelections({});
-              setShowResult(false);
-              setTimeLeft(data.maxTime || MAX_TIME);
-              setCardInput("");
-              setCardLastWrong(false);
-              awardedDoneRef.current = false;
-              answerTimesRef.current = {};
+              // Set up multiplayer event handlers
+              multiplayerService.onConnect = () => {
+                setIsConnected(true);
+                console.log('Connected to multiplayer server');
+              };
               
-              // Update Discord activity
-              const activity = discordIntegration.formatActivityForDiscord({
-                currentQuestion: data.question,
-                scores,
-                players,
-                timeLeft: data.maxTime || MAX_TIME
-              });
-              discordIntegration.setActivity(activity);
-            };
-            
-            multiplayerService.onShowResult = (data) => {
-              setShowResult(true);
-              setScores(data.scores || {});
+              multiplayerService.onDisconnect = () => {
+                setIsConnected(false);
+                console.log('Disconnected from multiplayer server');
+              };
               
-              // Update Discord activity
-              const activity = discordIntegration.formatActivityForDiscord({
-                currentQuestion: null,
-                scores: data.scores,
-                players
-              });
-              discordIntegration.setActivity(activity);
-            };
-            
-            // Check if this user is the host (first to join)
-            const roomState = multiplayerService.getCurrentState();
-            setIsHost(roomState.players.length === 1);
-            
+              multiplayerService.onRoomStateUpdate = (data) => {
+                setPlayers(data.players || []);
+                setScores(data.scores || {});
+                
+                // Update Discord activity
+                const activity = discordIntegration.formatActivityForDiscord({
+                  currentQuestion,
+                  scores: data.scores,
+                  players: data.players,
+                  timeLeft
+                });
+                discordIntegration.setActivity(activity);
+              };
+              
+              multiplayerService.onQuestionStart = (data) => {
+                setCurrentQuestion(data.question);
+                setSelections({});
+                setShowResult(false);
+                setTimeLeft(data.maxTime || MAX_TIME);
+                setCardInput("");
+                setCardLastWrong(false);
+                setCardImageError(false); // Reset image error state
+                setCardImageLoaded(false); // Reset image loaded state
+                awardedDoneRef.current = false;
+                answerTimesRef.current = {};
+                
+                // Preload card image if it's a card question
+                if (data.question.cardUrl) {
+                  preloadCardImage(data.question.cardUrl).catch(err => {
+                    console.warn('Failed to preload card image:', err);
+                  });
+                }
+                
+                // Update Discord activity
+                const activity = discordIntegration.formatActivityForDiscord({
+                  currentQuestion: data.question,
+                  scores,
+                  players,
+                  timeLeft: data.maxTime || MAX_TIME
+                });
+                discordIntegration.setActivity(activity);
+              };
+              
+              multiplayerService.onShowResult = (data) => {
+                setShowResult(true);
+                setScores(data.scores || {});
+                
+                // Update Discord activity
+                const activity = discordIntegration.formatActivityForDiscord({
+                  currentQuestion: null,
+                  scores: data.scores,
+                  players
+                });
+                discordIntegration.setActivity(activity);
+              };
+              
+              // Check if this user is the host (first to join)
+              const roomState = multiplayerService.getCurrentState();
+              setIsHost(roomState.players.length === 1);
+              
+            } else {
+              console.warn('Failed to initialize multiplayer, but Discord user is available');
+              // Even if multiplayer fails, we can show the Discord user
+              setPlayers([user]); // Show the Discord user in the list
+              setIsMultiplayerMode(false);
+              // Start local game as fallback
+              pickAndSetRandomQuestion();
+            }
           } else {
-            console.warn('Failed to initialize multiplayer, but Discord user is available');
-            // Even if multiplayer fails, we can show the Discord user
-            setPlayers([user]); // Show the Discord user in the list
+            console.log('Discord integration failed, running in local mode');
             setIsMultiplayerMode(false);
+            // Initialize local game
+            pickAndSetRandomQuestion();
           }
         } else {
-          console.log('Discord SDK not available, running in local mode');
+          console.log('Not in Discord environment, running in local mode');
           setIsMultiplayerMode(false);
           // Initialize local game
           pickAndSetRandomQuestion();
@@ -1219,6 +1297,32 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+                ) : !cardImageLoaded ? (
+                  // Loading state
+                  <div style={{
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(0,0,0,0.2)",
+                    borderRadius: 8,
+                    border: "2px solid #444",
+                    color: "#fff",
+                    fontSize: "14px",
+                    textAlign: "center",
+                    padding: "8px",
+                    boxShadow: "0 6px 18px rgba(0,0,0,0.6)"
+                  }}>
+                    <div>
+                      <div style={{ fontSize: "16px", fontWeight: "bold", marginBottom: "4px" }}>
+                        Loading...
+                      </div>
+                      <div style={{ fontSize: "12px", opacity: 0.8 }}>
+                        {currentQuestion.cardName}
+                      </div>
+                    </div>
+                  </div>
                 ) : (
                   <img
                     src={currentQuestion.cardUrl}
@@ -1232,6 +1336,7 @@ export default function App() {
                       ...(cardImageError ? { border: "2px solid red" } : {}) // Add error styling
                     }}
                     onError={() => setCardImageError(true)} // Set error state on image load failure
+                    onLoad={() => setCardImageLoaded(true)} // Set loaded state
                   />
                 )}
 
