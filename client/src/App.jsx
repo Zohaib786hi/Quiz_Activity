@@ -89,6 +89,7 @@ export default function App() {
   // For card-mode: input state and last attempt feedback
   const [cardInput, setCardInput] = useState("");
   const [cardLastWrong, setCardLastWrong] = useState(false);
+  const [cardImageError, setCardImageError] = useState(false);
 
   // Animated display scores (counts up when underlying `scores` changes)
   const [displayScores, setDisplayScores] = useState({});
@@ -569,6 +570,7 @@ export default function App() {
       setTimeLeft(MAX_TIME);
       setCardInput("");
       setCardLastWrong(false);
+      setCardImageError(false); // Reset image error state
 
       // reset per-question tracking
       answerTimesRef.current = {};
@@ -1191,11 +1193,47 @@ export default function App() {
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
               {/* image wrapper (position:relative) so overlay can be placed over the image */}
               <div style={{ position: "relative", width: 160, height: 160 }}>
-                <img
-                  src={currentQuestion.cardUrl}
-                  alt="HC card"
-                  style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 8, boxShadow: "0 6px 18px rgba(0,0,0,0.6)" }}
-                />
+                {cardImageError ? (
+                  // Fallback when image fails to load
+                  <div style={{
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(0,0,0,0.3)",
+                    borderRadius: 8,
+                    border: "2px solid #666",
+                    color: "#fff",
+                    fontSize: "14px",
+                    textAlign: "center",
+                    padding: "8px",
+                    boxShadow: "0 6px 18px rgba(0,0,0,0.6)"
+                  }}>
+                    <div>
+                      <div style={{ fontSize: "16px", fontWeight: "bold", marginBottom: "4px" }}>
+                        Card Image
+                      </div>
+                      <div style={{ fontSize: "12px", opacity: 0.8 }}>
+                        {currentQuestion.cardName}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <img
+                    src={currentQuestion.cardUrl}
+                    alt="HC card"
+                    style={{ 
+                      width: "100%", 
+                      height: "100%", 
+                      objectFit: "contain", 
+                      borderRadius: 8, 
+                      boxShadow: "0 6px 18px rgba(0,0,0,0.6)",
+                      ...(cardImageError ? { border: "2px solid red" } : {}) // Add error styling
+                    }}
+                    onError={() => setCardImageError(true)} // Set error state on image load failure
+                  />
+                )}
 
                 {/* Overlayed correct answer (center bottom) — slightly transparent background for legibility */}
                 {showResult && (

@@ -16,10 +16,18 @@ class DiscordIntegration {
       console.log('Starting Discord SDK initialization...');
       console.log('Window location:', window.location.href);
       console.log('Window parent:', window.parent !== window);
+      console.log('User agent:', navigator.userAgent);
       
       // Check if we're in Discord environment
-      if (typeof window !== 'undefined' && window.location.href.includes('discord.com')) {
+      const isDiscordEnvironment = window.location.href.includes('discord.com') || 
+                                  window.location.href.includes('discordapp.com') ||
+                                  window.parent !== window;
+      
+      if (isDiscordEnvironment) {
         console.log('Detected Discord environment, attempting to initialize SDK...');
+      } else {
+        console.log('Not in Discord environment, will run in local mode');
+        return false;
       }
       
       // Try multiple import methods
@@ -37,6 +45,9 @@ class DiscordIntegration {
         if (window.DiscordSDK && window.DiscordSDK.getSdk) {
           console.log('Using global DiscordSDK');
           getSdk = window.DiscordSDK.getSdk;
+        } else if (window.getSdk) {
+          console.log('Using global getSdk');
+          getSdk = window.getSdk;
         } else {
           console.error('No alternative SDK source found');
           return false;
@@ -61,24 +72,40 @@ class DiscordIntegration {
       
       // Set up event listeners
       console.log('Setting up SDK event listeners...');
-      this.sdk.subscribe('ACTIVITY_INSTANCE_PARTICIPANTS_UPDATE', (data) => {
-        console.log('Participants update:', data);
-        if (this.onPlayerJoin) this.onPlayerJoin(data);
-      });
+      
+      // Check if subscribe method exists
+      if (this.sdk.subscribe) {
+        this.sdk.subscribe('ACTIVITY_INSTANCE_PARTICIPANTS_UPDATE', (data) => {
+          console.log('Participants update:', data);
+          if (this.onPlayerJoin) this.onPlayerJoin(data);
+        });
 
-      this.sdk.subscribe('ACTIVITY_INSTANCE_UPDATE', (data) => {
-        console.log('Activity update:', data);
-        this.activityId = data.activity_id;
-        this.roomId = data.activity_id || 'default-room'; // Fallback room ID
-        if (this.onActivityUpdate) this.onActivityUpdate(data);
-      });
+        this.sdk.subscribe('ACTIVITY_INSTANCE_UPDATE', (data) => {
+          console.log('Activity update:', data);
+          this.activityId = data.activity_id;
+          this.roomId = data.activity_id || 'default-room'; // Fallback room ID
+          if (this.onActivityUpdate) this.onActivityUpdate(data);
+        });
+      } else {
+        console.warn('SDK subscribe method not available');
+      }
 
       // Get current user
       console.log('Getting current user...');
-      const user = await this.sdk.commands.getCurrentUser();
-      console.log('Current user obtained:', user);
-      this.currentUser = user;
-      if (this.onUserUpdate) this.onUserUpdate(user);
+      if (this.sdk.commands && this.sdk.commands.getCurrentUser) {
+        const user = await this.sdk.commands.getCurrentUser();
+        console.log('Current user obtained:', user);
+        this.currentUser = user;
+        if (this.onUserUpdate) this.onUserUpdate(user);
+      } else {
+        console.warn('SDK getCurrentUser command not available');
+        // Create a fallback user object
+        this.currentUser = {
+          id: 'local-user',
+          username: 'Local Player',
+          avatar: null
+        };
+      }
 
       console.log('Discord SDK initialized successfully');
       return true;

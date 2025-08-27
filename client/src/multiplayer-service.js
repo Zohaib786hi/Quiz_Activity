@@ -28,6 +28,8 @@ class MultiplayerService {
 
   async initialize() {
     try {
+      console.log('Initializing multiplayer service...');
+      
       // Initialize Discord integration first
       const discordInitialized = await discordIntegration.initialize();
       if (!discordInitialized) {
@@ -37,10 +39,19 @@ class MultiplayerService {
 
       this.currentUser = await discordIntegration.getCurrentUser();
       this.roomId = await discordIntegration.getRoomId();
+      
+      console.log('Discord integration successful, user:', this.currentUser);
+      console.log('Room ID:', this.roomId);
 
       // Connect to server
-      await this.connectToServer();
-      return true;
+      try {
+        await this.connectToServer();
+        return true;
+      } catch (connectionError) {
+        console.error('Failed to connect to server:', connectionError);
+        console.log('Will run in local mode due to server connection failure');
+        return false;
+      }
     } catch (error) {
       console.error('Failed to initialize multiplayer service:', error);
       return false;
@@ -49,31 +60,50 @@ class MultiplayerService {
 
   async connectToServer() {
     try {
+      console.log('Attempting to connect to server...');
+      
       // Get Discord token for authentication
       const token = await this.getDiscordToken();
+      console.log('Discord token obtained:', token ? 'Yes' : 'No');
       
       this.socket = io('https://quiz-activity.onrender.com', {
         auth: {
           token: token,
           roomId: this.roomId
         },
-        transports: ['websocket', 'polling']
+        transports: ['websocket', 'polling'],
+        timeout: 10000, // 10 second timeout
+        forceNew: true
       });
 
       this.setupEventListeners();
       
       return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          console.error('Connection timeout');
+          reject(new Error('Connection timeout'));
+        }, 15000); // 15 second timeout
+
         this.socket.on('connect', () => {
+          clearTimeout(timeout);
           this.isConnected = true;
-          console.log('Connected to server');
+          console.log('Connected to server successfully');
           if (this.onConnect) this.onConnect();
           resolve();
         });
 
         this.socket.on('connect_error', (error) => {
+          clearTimeout(timeout);
           console.error('Connection error:', error);
+          this.isConnected = false;
           if (this.onError) this.onError(error);
           reject(error);
+        });
+
+        this.socket.on('disconnect', (reason) => {
+          console.log('Disconnected from server:', reason);
+          this.isConnected = false;
+          if (this.onDisconnect) this.onDisconnect(reason);
         });
       });
     } catch (error) {
